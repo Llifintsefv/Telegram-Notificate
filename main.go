@@ -49,7 +49,7 @@ func handleUpdate(bot *telego.Bot, update telego.Update) {
 
 func handleMessage(bot *telego.Bot, message *telego.Message) {
 	chatID := tu.ID(message.Chat.ID)
-
+	go sendNotificate(bot, chatID)
 	mu.Lock()
 	defer mu.Unlock()
 
@@ -58,16 +58,16 @@ func handleMessage(bot *telego.Bot, message *telego.Message) {
 		if cancel, ok := ctxMap[message.Chat.ID]; ok  {
 			cancel()
 		}
-
 		ctx,cancel := context.WithCancel(context.Background())
 		ctxMap[message.Chat.ID] = cancel
 
-		go sendNotificate(ctx ,bot, chatID) 
+		GenerateVisual(ctx,bot,chatID)	
 	case "/stop":
 		if cancel, ok := ctxMap[message.Chat.ID]; ok  {
 			cancel()
 			delete(ctxMap, message.Chat.ID)
 		}
+
 	default:
 		_, _ = bot.CopyMessage(
 			tu.CopyMessage(
@@ -79,12 +79,8 @@ func handleMessage(bot *telego.Bot, message *telego.Message) {
 	}
 }
 
-func sendNotificate(ctx context.Context,bot *telego.Bot, chatID telego.ChatID) {
+func sendNotificate(bot *telego.Bot, chatID telego.ChatID) {
 	for {
-		select {
-		case <-ctx.Done(): 
-			return
-		default:
 			currentTime := time.Now()
 			currentHour := currentTime.Hour()
 			if currentHour == 13 || currentHour == 16 || currentHour == 23 {
@@ -93,7 +89,44 @@ func sendNotificate(ctx context.Context,bot *telego.Bot, chatID telego.ChatID) {
 					Text:   "САМОЕ ВРЕМЯ ДЛЯ ПОЗИТИВНОЙ ПСИХОЛОГИИ ДРУЖИЩЕ",
 				})
 			}
-			time.Sleep(4 * time.Second)
+			time.Sleep(60 * time.Minute)
+		}
+	}
+
+
+	func GenerateVisual(ctx context.Context, bot *telego.Bot, chatID telego.ChatID) {
+	for {
+		select {
+		case <-ctx.Done():
+			// Контекст отменен, завершаем работу функции
+			return
+		default:
+			// Ожидаем новые сообщения
+			updates, _ := bot.GetUpdates(nil) 
+			for _, update := range updates {
+				if update.Message != nil && tu.ID(update.Message.Chat.ID) == chatID {
+					// Обрабатываем сообщение, отправленное в чат, 
+					// для которого запущена функция GenerateVisual
+
+					switch update.Message.Text {
+					case "/stop":
+						if cancel, ok := ctxMap[update.Message.Chat.ID]; ok {
+							cancel()
+							delete(ctxMap, update.Message.Chat.ID)
+						}
+						return // Завершаем функцию GenerateVisual после /stop
+					default:
+						_, _ = bot.SendMessage(&telego.SendMessageParams{
+					ChatID: chatID,
+					Text:   "САМОЕ ВРЕМЯ ДЛЯ ПОЗИТИВНОЙ ПСИХОЛОГИИ ДРУЖИЩЕ",
+				})
+					}
+				}
+				
+              bot.GetUpdates(&telego.GetUpdatesParams{Offset: update.UpdateID + 1})	
+			}
+
+			time.Sleep(time.Second) // Небольшая пауза, чтобы не нагружать API Telegram
 		}
 	}
 }
